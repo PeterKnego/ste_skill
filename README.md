@@ -26,11 +26,15 @@ Add the marketplace, then install the plugin:
 /plugin install ste@ste-skill
 ```
 
-The automatic check is off by default. When you enable the plugin, Claude
-Code asks you one question: turn the automatic check on, or keep it off.
-To change the answer later, edit the plugin's `auto_check` option in
-`pluginConfigs` in `~/.claude/settings.json`, or set `STE_AUTO_CHECK=1` in
-your environment.
+The automatic check is off by default. To turn it on or off, run
+`/plugin configure ste@ste-skill` in Claude Code, or pass the option on the
+command line:
+
+```bash
+claude plugin install ste@ste-skill --config auto_check=true
+```
+
+`STE_AUTO_CHECK=1` in your environment also turns the check on.
 
 For a manual install of the skill alone, see [INSTALL.md](INSTALL.md).
 
