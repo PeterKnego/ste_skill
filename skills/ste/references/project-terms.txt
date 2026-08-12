@@ -1,0 +1,15 @@
+# Words the checker must never flag.
+# One per line, lowercase. Comments start with #.
+# Add your product names, crate names, technical nouns, and any -ing word
+# that is a real noun in your domain.
+
+# examples — replace with your own
+ultima
+raft
+mvcc
+wal
+tokio
+serde
+matching
+sharding
+polling

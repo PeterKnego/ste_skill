@@ -1,0 +1,21 @@
+{
+  "name": "ste",
+  "displayName": "Simplified Technical English",
+  "version": "1.0.0",
+  "description": "Write or rewrite English prose to ASD-STE100 Simplified Technical English. Includes a deterministic checker script and a PostToolUse hook that feeds violations back to Claude in the same turn.",
+  "author": {
+    "name": "Peter Knego",
+    "email": "peter@knego.net"
+  },
+  "repository": "https://github.com/PeterKnego/ste_skill",
+  "license": "MIT",
+  "keywords": [
+    "simplified-technical-english",
+    "ste",
+    "asd-ste100",
+    "technical-writing",
+    "documentation",
+    "prose",
+    "style-guide"
+  ]
+}

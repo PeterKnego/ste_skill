@@ -1,0 +1,15 @@
+{
+  "name": "ste-skill",
+  "owner": {
+    "name": "Peter Knego",
+    "email": "peter@knego.net"
+  },
+  "description": "ASD-STE100 Simplified Technical English skill for Claude Code",
+  "plugins": [
+    {
+      "name": "ste",
+      "source": "./",
+      "description": "Write or rewrite English prose to ASD-STE100 Simplified Technical English, with a deterministic checker and an automatic post-write check on Markdown files."
+    }
+  ]
+}
