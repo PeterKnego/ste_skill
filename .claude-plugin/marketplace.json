@@ -9,6 +9,7 @@
     {
       "name": "ste",
       "source": "./",
+      "version": "1.0.0",
       "description": "Write or rewrite English prose to ASD-STE100 Simplified Technical English, with a deterministic checker and an automatic post-write check on Markdown files."
     }
   ]
