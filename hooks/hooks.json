@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/skills/ste/hooks/ste-post-write.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/skills/ste/hooks/ste-post-write.sh --opt-in",
             "timeout": 20
           }
         ]

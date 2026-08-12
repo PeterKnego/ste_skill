@@ -11,10 +11,11 @@ The plugin contains three parts:
   Python 3.8+, standard library only, no dependencies. Its exit code is 1 on
   violations, so it works in CI and git hooks.
 
-- **A post-write hook** — an automatic check on Markdown files. When Claude
-  writes or edits one, the hook runs the checker on it. The violations go
-  back into Claude's context, and Claude fixes them in the same turn. The
-  hook is silent on clean files and on files that are not Markdown.
+- **A post-write hook** — an automatic check on Markdown files, off by
+  default. When the check is on and Claude writes or edits a Markdown file,
+  the hook runs the checker on it. The violations go back into Claude's
+  context, and Claude fixes them in the same turn. The hook is silent on
+  clean files and on files that are not Markdown.
 
 ## Install
 
@@ -25,8 +26,12 @@ Add the marketplace, then install the plugin:
 /plugin install ste@ste-skill
 ```
 
-When you enable the plugin, the hook becomes active. If you do not want the
-automatic check, disable the plugin's hooks in the `/plugin` settings.
+The automatic check is off by default. When you enable the plugin, Claude
+Code asks you one question: turn the automatic check on, or keep it off.
+To change the answer later, edit the plugin's `auto_check` option in
+`pluginConfigs` in `~/.claude/settings.json`, or set `STE_AUTO_CHECK=1` in
+your environment.
+
 For a manual install of the skill alone, see [INSTALL.md](INSTALL.md).
 
 ## Use

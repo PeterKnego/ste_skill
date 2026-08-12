@@ -22,11 +22,23 @@
 #   }
 #
 # Environment:
+#   STE_AUTO_CHECK  with --opt-in: set to 1 to turn the automatic check on
 #   STE_PATHS       glob-ish grep pattern for files to check (default: \.(md|mdx)$)
 #   STE_DICTIONARY  path to an approved-word list; enables full dictionary check
 #   STE_MAX         stop reporting after this many violations (default 40)
 
 set -euo pipefail
+
+# The plugin invokes this hook with --opt-in, and the hook then runs only
+# when the user turned the automatic check on: the auto_check plugin option
+# (asked at install), or STE_AUTO_CHECK=1 in the environment. A manual
+# install that wires the hook without the flag always runs.
+if [ "${1:-}" = "--opt-in" ]; then
+  case "${CLAUDE_PLUGIN_OPTION_AUTO_CHECK:-${STE_AUTO_CHECK:-}}" in
+    1|true|yes|on) ;;
+    *) exit 0 ;;
+  esac
+fi
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHECKER="$SKILL_DIR/scripts/ste_check.py"

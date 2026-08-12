@@ -9,6 +9,15 @@
   },
   "repository": "https://github.com/PeterKnego/ste_skill",
   "license": "MIT",
+  "userConfig": {
+    "auto_check": {
+      "type": "boolean",
+      "title": "Automatic STE check",
+      "description": "Run the STE checker each time Claude writes or edits a Markdown file, and feed the violations back to Claude. Off by default. When off, you use /ste and the checker script manually.",
+      "default": false,
+      "required": false
+    }
+  },
   "keywords": [
     "simplified-technical-english",
     "ste",
