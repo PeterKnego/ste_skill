@@ -5,17 +5,29 @@ Usage:
     python3 ste_check.py FILE [FILE ...]
     python3 ste_check.py --procedural FILE      # 20-word limit everywhere
     python3 ste_check.py --dictionary approved-words.txt FILE
+    python3 ste_check.py --format json FILE
     cat draft.md | python3 ste_check.py -
 
-Exit code 1 if any violation is found, so it works as a pre-commit hook or in
-CI. This is a heuristic. It catches structure and common word choice, not full
-dictionary compliance. See references/limits.md.
+Output is one line per sentence with all of that sentence's findings:
+
+    L12 [E8.6 semicolon; split the sentence] [W3.1 passive 'is set'] :: The ...
+
+E is an error, W is a warning. Exit code 1 on errors (--fail-on warning to
+include warnings), so it works as a pre-commit hook or in CI. This is a
+heuristic. It catches structure and common word choice, not full dictionary
+compliance. See references/limits.md.
 """
 
 import argparse
+import collections
+import json
 import os
 import re
 import sys
+
+Finding = collections.namedtuple("Finding", "line rule severity message sentence")
+
+SEVERITIES = ("error", "warning")
 
 # ---------------------------------------------------------------- word lists
 
@@ -98,6 +110,18 @@ def is_participle(word):
     return w in IRREGULAR_PARTICIPLES or (len(w) > 4 and w.endswith("ed"))
 
 
+# A word that ends in -ing after one of these is a gerund, not a noun.
+# "of", "for", "on", "in", "to" are left out: "the cost of sharding" is a noun.
+GERUND_PREPOSITIONS = {
+    "by", "before", "after", "without", "while", "when", "upon", "instead",
+    "besides", "despite",
+}
+
+# word/word with lowercase words on both sides: and/or, read/write, on/off.
+# Paths (../how-to), abbreviations (I/O), and units (frames/s) do not match.
+AND_OR_SLASH_RE = re.compile(r"(?<![\w./-])[a-z]{2,}/[a-z]{2,}(?![\w./-])")
+
+
 def _blocks(text):
     """Yield (joined_text, first_line_number) for each paragraph or list item.
 
@@ -132,7 +156,8 @@ def split_sentences(text):
         buf = ""
         for part in parts:
             buf = (buf + " " + part).strip() if buf else part
-            if ABBREV_TAIL_RE.search(buf):
+            # "1." of a numbered list item is not a sentence end.
+            if ABBREV_TAIL_RE.search(buf) or re.fullmatch(r"\d+[.)]", buf):
                 continue
             if buf.strip():
                 yield buf.strip(), start
@@ -151,6 +176,8 @@ def strip_code(text):
     text = re.sub(r"`[^`\n]*`", blank, text)
     text = re.sub(r"https?://\S+", " ", text)
     text = re.sub(r"^(?: {4}|\t).*$", blank, text, flags=re.M)
+    # Table rows are not sentences.
+    text = re.sub(r"^\s*\|.*$", blank, text, flags=re.M)
     return text
 
 
@@ -167,8 +194,8 @@ def is_heading(sentence):
 def check_sentence(sentence, lineno, opts, approved, extra_terms):
     out = []
 
-    def flag(rule, message):
-        out.append((lineno, rule, message, sentence))
+    def flag(rule, message, severity="error"):
+        out.append(Finding(lineno, rule, severity, message, sentence))
 
     body = re.sub(r"^([-*+]|\d+[.)])\s+", "", sentence)
     words = WORD_RE.findall(body)
@@ -176,17 +203,29 @@ def check_sentence(sentence, lineno, opts, approved, extra_terms):
     if not words:
         return out
 
-    # Rule 4.1 — sentence length
-    limit = 20 if (opts.procedural or is_list_item(sentence)) else 25
-    if len(words) > limit:
-        kind = "instruction" if limit == 20 else "description"
-        flag("4.1", f"{len(words)} words in a {kind} (limit {limit})")
+    instruction = opts.procedural or is_list_item(sentence)
 
-    # Rule 1.5 — -ing forms
-    for w, lw in zip(words, lower):
-        if lw.endswith("ing") and lw not in ING_ALLOWED and lw not in extra_terms:
-            if len(lw) > 4 and w[0].islower():
-                flag("1.5", f"-ing form '{w}'")
+    # Rule 4.1 — sentence length
+    limit = 20 if instruction else 25
+    if len(words) > limit:
+        kind = "an instruction" if limit == 20 else "a description"
+        flag("4.1", f"{len(words)} words in {kind} (limit {limit})")
+
+    # Rule 1.5 — -ing forms used as verbs. A bare -ing word is as often a
+    # noun (sibling, fuzzing) as a gerund, so only flag the positions where
+    # it must be a gerund: at the start of the sentence, or after a
+    # preposition. "be + -ing" is rule 1.6 below.
+    def is_gerund_candidate(word, lw):
+        return (
+            lw.endswith("ing") and len(lw) > 4
+            and lw not in ING_ALLOWED and lw not in extra_terms
+        )
+
+    if is_gerund_candidate(words[0], lower[0]):
+        flag("1.5", f"-ing form '{words[0]}' starts the sentence")
+    for i in range(1, len(words)):
+        if lower[i - 1] in GERUND_PREPOSITIONS and is_gerund_candidate(words[i], lower[i]):
+            flag("1.5", f"-ing form '{lower[i - 1]} {words[i]}'")
 
     # Rule 1.6 — compound tenses
     for i, lw in enumerate(lower[:-1]):
@@ -196,13 +235,16 @@ def check_sentence(sentence, lineno, opts, approved, extra_terms):
         if lw in BE_FORMS and nxt.endswith("ing") and nxt not in ING_ALLOWED:
             flag("1.6", f"continuous tense '{lw} {nxt}'")
 
-    # Rule 3.1/3.2 — passive voice
+    # Rule 3.1/3.2 — passive voice. An error in an instruction; a warning in
+    # descriptive text, where STE permits the passive when the agent is
+    # unknown or unimportant and where "is configured" is often a state.
+    passive_severity = "error" if instruction else "warning"
     for i, lw in enumerate(lower[:-1]):
         if lw in BE_FORMS and is_participle(lower[i + 1]):
-            flag("3.1", f"passive voice '{lw} {lower[i + 1]}'")
+            flag("3.1", f"passive '{lw} {lower[i + 1]}'", passive_severity)
         if lw in BE_FORMS and i + 2 < len(lower) and is_participle(lower[i + 2]):
             if lower[i + 1] in {"not", "also", "then", "already", "now"}:
-                flag("3.1", f"passive voice '{lw} {lower[i+1]} {lower[i+2]}'")
+                flag("3.1", f"passive '{lw} {lower[i+1]} {lower[i+2]}'", passive_severity)
 
     # Rule 1.1/1.3 — non-approved words
     for w, lw in zip(words, lower):
@@ -223,49 +265,22 @@ def check_sentence(sentence, lineno, opts, approved, extra_terms):
     if re.match(r"^[A-Z][a-z]+\s", body) and re.search(r",?\s+and\s+then\s", low_body):
         flag("4.2", "two instructions in one sentence")
 
-    # Rule 4.4 — trailing condition
+    # Rule 4.4 — trailing condition. Heuristic: a warning.
     if re.search(r"\S,?\s+(if|when|unless)\s+\w", body[10:], re.I):
         if not re.match(r"^(if|when|unless)\b", body, re.I):
-            flag("4.4", "condition comes after the instruction; move it to the front")
+            flag("4.4", "condition after the instruction; move it to the front", "warning")
 
     # Rule 8.6 — semicolons
     if ";" in body:
         flag("8.6", "semicolon; split the sentence")
 
     # Rule 8.2 — and/or slash
-    if re.search(r"\w/\w", body) and not re.search(r"\w+/\w+\.\w", body):
-        flag("8.2", "slash used as and/or; write it out")
+    match = AND_OR_SLASH_RE.search(body)
+    if match:
+        flag("8.2", f"slash in '{match.group(0)}'; write 'and' or 'or'")
 
-    # Rule 2.1 — noun clusters (rough: 4+ consecutive lowercase non-function words)
-    function_words = {
-        "the", "a", "an", "of", "in", "on", "at", "to", "for", "and", "or",
-        "with", "from", "by", "as", "is", "are", "was", "were", "be", "that",
-        "this", "these", "those", "it", "its", "you", "your", "not", "if",
-        "when", "then", "do", "does", "can", "must", "will", "into", "over",
-    }
-    run = []
-    for w in body.split():
-        token = WORD_RE.match(w)
-        clean = token.group(0).lower() if token else ""
-        breaks_run = (
-            not clean
-            or clean in function_words
-            or clean in NOT_APPROVED
-            or not clean.isalpha()
-            or len(clean) < 3
-            or clean.endswith("ly")
-            or clean.endswith("ed")
-            or clean.endswith("ing")
-            or not w[0].islower()
-            or w[-1] in ",;:.!?)("
-        )
-        if breaks_run:
-            run = []
-            continue
-        run.append(clean)
-        if len(run) == 4:
-            flag("2.1", f"possible 4-noun cluster '{' '.join(run)}'")
-            run = []
+    # Rule 2.1 (noun clusters) is not checked. Without part-of-speech data a
+    # run of content words is not a noun cluster often enough to be useful.
 
     return out
 
@@ -286,11 +301,58 @@ def check_text(text, opts, approved, extra_terms):
     # Rule 6.1 — paragraph length
     for block_start, count in paragraph_sizes(text):
         if count > 6:
-            findings.append(
-                (block_start, "6.1", f"{count} sentences in one paragraph (limit 6)", "")
-            )
-    findings.sort(key=lambda f: (f[0], f[1]))
+            findings.append(Finding(
+                block_start, "6.1", "error",
+                f"{count} sentences in one paragraph (limit 6)", "",
+            ))
+    findings.sort(key=lambda f: (f.line, f.rule))
     return findings
+
+
+# ---------------------------------------------------------------- reporting
+
+def count_by_severity(findings):
+    counts = collections.Counter(f.severity for f in findings)
+    return counts["error"], counts["warning"]
+
+
+def summary(errors, warnings):
+    e = "error" if errors == 1 else "errors"
+    w = "warning" if warnings == 1 else "warnings"
+    return f"{errors} {e}, {warnings} {w}"
+
+
+def format_report(path, findings, width=80):
+    """One line per sentence: all its findings, then the sentence once.
+
+    The reader is usually a model that must fix the sentence. It needs the
+    line, the rules, and the text once, not the text repeated per finding.
+    """
+    lines = []
+    if findings:
+        lines.append(path)
+        groups = collections.OrderedDict()
+        for f in findings:
+            groups.setdefault((f.line, f.sentence), []).append(f)
+        for (lineno, sentence), group in groups.items():
+            tags = " ".join(
+                f"[{f.severity[0].upper()}{f.rule} {f.message}]" for f in group
+            )
+            text = f" :: {sentence[:width]}" if sentence else ""
+            lines.append(f"  L{lineno} {tags}{text}")
+    errors, warnings = count_by_severity(findings)
+    lines.append(f"{summary(errors, warnings)} in {path}")
+    return "\n".join(lines)
+
+
+def format_json(path, findings):
+    return json.dumps([
+        {
+            "file": path, "line": f.line, "rule": f.rule,
+            "severity": f.severity, "message": f.message, "sentence": f.sentence,
+        }
+        for f in findings
+    ], indent=1)
 
 
 def paragraph_sizes(text):
@@ -336,6 +398,14 @@ def main():
         help="project terms to never flag, one per line "
              "(default: references/project-terms.txt next to this script)",
     )
+    parser.add_argument(
+        "--format", choices=("text", "json"), default="text",
+        help="text: one line per sentence (default); json: one object per finding",
+    )
+    parser.add_argument(
+        "--fail-on", choices=SEVERITIES, default="error",
+        help="lowest severity that sets exit code 1 (default: error)",
+    )
     parser.add_argument("--quiet", action="store_true", help="only print the count")
     opts = parser.parse_args()
 
@@ -350,23 +420,26 @@ def main():
         terms_path = guess if os.path.exists(guess) else None
     extra_terms = load_words(terms_path) if terms_path else set()
 
-    total = 0
+    total_errors = total_warnings = 0
+    json_records = []
     for path in opts.files:
         text = sys.stdin.read() if path == "-" else open(path, encoding="utf-8").read()
         findings = check_text(text, opts, approved, extra_terms)
-        total += len(findings)
-        if findings and not opts.quiet:
-            print(f"\n{path}")
-            last = None
-            for lineno, rule, message, sentence in findings:
-                if sentence and sentence != last:
-                    print(f"  line {lineno}: {sentence[:100]}")
-                    last = sentence
-                print(f"      [{rule}] {message}")
+        errors, warnings = count_by_severity(findings)
+        total_errors += errors
+        total_warnings += warnings
+        if opts.format == "json":
+            json_records.extend(json.loads(format_json(path, findings)))
+        elif findings and not opts.quiet:
+            print(format_report(path, findings))
 
-    label = "violation" if total == 1 else "violations"
-    print(f"\n{total} {label}.")
-    return 1 if total else 0
+    if opts.format == "json":
+        print(json.dumps(json_records, indent=1))
+    else:
+        print(f"{summary(total_errors, total_warnings)}.")
+
+    failing = total_errors if opts.fail_on == "error" else total_errors + total_warnings
+    return 1 if failing else 0
 
 
 if __name__ == "__main__":

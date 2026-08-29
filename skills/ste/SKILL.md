@@ -99,15 +99,28 @@ write a normal draft and then simplify it.
 content. If a rule would change the meaning, keep the meaning and tell the user
 which rule you broke and why.
 
-**Always run the checker on prose you produced:**
+**Rewrite by sentence, not by file.** Run the checker first:
 
 ```
 python3 scripts/ste_check.py FILE
+python3 scripts/ste_check.py --procedural FILE   # every sentence is a step
 ```
 
-Fix everything it reports, then run it again. The checker is a heuristic, not a
-certification — it catches structure and word choice, not full dictionary
-compliance. See `references/limits.md`.
+It prints one line per sentence:
+
+```
+L<line> [E<rule> <message>] [W<rule> <message>] :: <sentence>
+```
+
+`E` is an error. `W` is a warning. Fix each `E` sentence with `Edit` on that
+sentence. Fix a `W` sentence only when the meaning stays the same. Do not
+`Write` the whole file again. A sentence the checker does not list is done.
+
+Run the checker at most twice: once before you edit, once after. Then report
+the counts before and after, and list what remains and why. Do not chase the
+count to zero. The checker is a heuristic, not a certification. It catches
+structure and word choice, not full dictionary compliance. See
+`references/limits.md`.
 
 For the full rule set with examples, read `references/rules.md`. Load it only
 when a rule above is unclear or the user asks for a rule-by-rule review.

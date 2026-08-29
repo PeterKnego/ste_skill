@@ -65,14 +65,16 @@ automatically.
 - `references/limits.md` — what this can and cannot guarantee. Read this before
   you claim STE compliance to anyone.
 
-## Close the loop automatically (recommended)
+## Close the loop automatically (optional)
 
-The plugin install wires this hook for you. For a manual install, wire it
-yourself as follows.
+The plugin install wires this hook for you, off by default. For a manual
+install, wire it yourself as follows.
 
-`hooks/ste-post-write.sh` is a `PostToolUse` hook. Each time Claude writes or
-edits a Markdown file, the hook runs the checker. The violations go back into
-Claude's context, and Claude fixes them in the same turn. Add to
+`hooks/ste-post-write.sh` is a `PostToolUse` hook. Each time Claude writes a
+Markdown file, the hook runs the checker. The errors go back into Claude's
+context, one line per sentence, and Claude fixes those sentences with `Edit`
+in the same turn. The hook matches `Write` only: a hook on `Edit` would run
+again after each fix and inject the report again each time. Add to
 `.claude/settings.json`:
 
 ```json
@@ -80,7 +82,7 @@ Claude's context, and Claude fixes them in the same turn. Add to
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write",
         "hooks": [
           {
             "type": "command",
@@ -94,9 +96,13 @@ Claude's context, and Claude fixes them in the same turn. Add to
 }
 ```
 
-The hook stays silent on a clean file and on any file that is not `.md`.
-Environment variables: `STE_PATHS` (file pattern), `STE_DICTIONARY` (approved
-word list), `STE_MAX` (violation cap, default 40).
+The hook stays silent on a file with no errors and on any file that is not
+`.md`. Environment variables: `STE_PATHS` (file pattern), `STE_DICTIONARY`
+(approved word list), `STE_MAX` (sentences reported, default 15).
+
+Each report the hook injects stays in the context for the rest of the
+session. Keep the hook off for bulk rewrites of existing documentation and use
+`/ste rewrite FILE` instead.
 
 This is the deterministic version of what an LLM-based rewrite hook does. No
 second model, no paraphrase drift, no GPU.
