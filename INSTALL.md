@@ -42,8 +42,9 @@ python3 ~/.claude/skills/ste/scripts/ste_check.py --procedural docs/install.md
 python3 ~/.claude/skills/ste/scripts/ste_check.py --dictionary approved-words.txt docs/*.md
 ```
 
-When it finds a violation, its exit code is 1, so it drops into CI or a git
-hook unchanged. Python 3.8+, standard library only, no dependencies.
+When it finds an error, its exit code is 1, so it drops into CI or a git
+hook unchanged. Warnings do not change the exit code unless you pass
+`--fail-on warning`. Python 3.8+, standard library only, no dependencies.
 
 ## Scope it to documentation only
 

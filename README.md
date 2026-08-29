@@ -48,6 +48,18 @@ Invoke the skill directly:
 /ste write an install guide for the pump controller
 ```
 
+A rewrite works by sentence, not by file. Claude runs the checker, edits only
+the sentences the checker lists, runs the checker once more, and reports what
+remains. It does not write the whole file again, and it does not loop until
+the count is zero. The cost of a rewrite follows the number of findings, not
+the length of the file.
+
+The checker prefers precision to recall. It does not flag a bare `-ing`
+word (`sibling`, `fuzzing`), only one at the start of a sentence or after a
+preposition such as `before` or `by`. It does not guess at noun clusters. It
+skips code, tables, paths, and links. When it flags something, Claude can
+fix it.
+
 Run the checker standalone:
 
 ```bash
