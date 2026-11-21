@@ -104,6 +104,58 @@ class Severity(unittest.TestCase):
         self.assertEqual([(f.rule, f.severity) for f in found], [("4.4", "warning")])
 
 
+class Modality(unittest.TestCase):
+    """A hedge is content. The checker must not push Claude to remove it."""
+
+    def test_modal_perfect_is_not_a_perfect_tense(self):
+        self.assertNotIn("1.6", rules("The request may have failed."))
+
+    def test_modal_not_perfect_is_not_a_perfect_tense(self):
+        self.assertNotIn("1.6", rules("The job might not have finished."))
+
+    def test_plain_perfect_is_still_flagged(self):
+        self.assertIn("1.6", rules("The job has failed."))
+
+    def test_future_perfect_is_still_flagged(self):
+        self.assertIn("1.6", rules("The job will have finished."))
+
+    def test_may_is_a_warning_not_an_error(self):
+        found = findings("The request may have failed.")
+        self.assertEqual([(f.rule, f.severity) for f in found], [("1.1", "warning")])
+
+
+class SynonymRotation(unittest.TestCase):
+    def test_second_synonym_is_flagged_on_its_sentence(self):
+        found = findings("Delete the file.\n\nThen remove the cache.\n")
+        self.assertEqual([(f.rule, f.severity, f.line) for f in found], [("1.4", "warning", 3)])
+        self.assertIn("'remove'", found[0].message)
+        self.assertIn("'delete'", found[0].message)
+
+    def test_most_frequent_word_wins(self):
+        found = findings("Remove the file. Delete the cache. Delete the log.")
+        self.assertEqual([f.rule for f in found], ["1.4"])
+        self.assertTrue(found[0].sentence.startswith("Remove"))
+
+    def test_inflected_forms_count(self):
+        self.assertEqual(rules("The job started. The job launches at noon."), ["1.4"])
+
+    def test_one_word_repeated_is_not_flagged(self):
+        self.assertEqual(rules("Remove the panel. Then remove the seal."), [])
+
+    def test_project_term_is_not_flagged(self):
+        self.assertEqual(rules("Get the file. Fetch the log.", terms={"fetch"}), [])
+
+    def test_inline_code_is_not_counted(self):
+        self.assertEqual(rules("Get the file. Then run `git fetch` once."), [])
+
+    def test_no_group_word_is_already_a_non_approved_word(self):
+        # A non-approved word already gets a 1.1 error. A second finding on
+        # the same word is noise.
+        for group in ste.SYNONYM_GROUPS:
+            for word in group:
+                self.assertNotIn(word, ste.NOT_APPROVED)
+
+
 class Tables(unittest.TestCase):
     def test_table_rows_are_skipped(self):
         text = "| Limit | Where |\n|---|---|\n| Chunking is done here; see writing | ../how-to |\n"

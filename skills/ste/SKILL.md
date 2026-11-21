@@ -25,6 +25,8 @@ code, identifiers, quoted user input, or third-party text you are only citing.
    Exception: an established technical name (`bearing`, `housing`, `string`).
 5. Simple tenses only: simple present, simple past, simple future. No perfect
    tenses, no continuous tenses. `The valve closed.` not `The valve has closed.`
+   Exception: a modal with `have` is a hedge, not a tense. Keep it.
+   `The request may have failed.` does not become `The request failed.`
 6. Keep articles, `that`, and relative pronouns. Do not compress.
    `Make sure that the switch is off.` not `Make sure switch off.`
 7. No noun clusters longer than three nouns. Break the fourth noun out with a
@@ -98,6 +100,10 @@ write a normal draft and then simplify it.
 **When you rewrite existing text:** keep every fact. STE removes ambiguity, not
 content. If a rule would change the meaning, keep the meaning and tell the user
 which rule you broke and why.
+
+Keep every hedge. `may`, `might`, and `could` tell the reader how sure the
+author is. If you remove a hedge, you make a new claim. Do not add a fact,
+a cause, or a certainty that the source text does not have.
 
 **Rewrite by sentence, not by file.** Run the checker first:
 

@@ -43,6 +43,10 @@ variation is a defect.
 - ✗ Remove the panel. Then detach the second cover and take off the seal.
 - ✓ Remove the panel. Then remove the second cover and remove the seal.
 
+The checker gives a `W1.4` warning when one file uses two verbs from a known
+group, for example `delete` and `remove`. It names the verb that the file
+uses most. Two verbs can be two real actions, so the finding is a warning.
+
 ### 1.5 No `-ing` forms
 
 No gerunds, no present participles, no progressive tenses. Rewrite with a
@@ -64,6 +68,11 @@ Simple present, simple past, simple future. No `has done`, no `had done`, no
 
 - ✗ The controller has detected a fault.
 - ✓ The controller detected a fault.
+
+Exception: a modal before `have` makes a hedge, not a tense. `may have
+failed` and `could have stopped` tell the reader that the author is not sure.
+Keep them. `failed` alone is a different claim. The checker does not flag
+these forms, and it gives only a warning for `may`.
 
 ### 1.7 Keep every word
 

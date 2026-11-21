@@ -65,6 +65,58 @@ NOT_APPROVED = {
     "please": "omit it",
 }
 
+# Non-approved words that are a warning, not an error. A hedge carries the
+# author's confidence. "may have failed" -> "failed" is a different claim, so
+# Claude must change these only when the meaning stays the same.
+HEDGES = {"may"}
+
+# Modals before "have + participle" make a hedge ("may have failed"), not a
+# present perfect. "will" and "shall" are left out: "will have finished" is a
+# future perfect, a compound tense.
+MODALS = {"may", "might", "could", "should", "would", "must", "can"}
+NEGATIONS = {"not", "never", "also", "already"}
+
+# Rule 1.4 — verbs that writers rotate for one action. Each group holds only
+# words that are not in NOT_APPROVED; those already get a 1.1 error. Words
+# with a common second meaning stay out: "correct" (adjective), "display"
+# (noun for a screen).
+SYNONYM_GROUPS = [
+    ("check", "confirm", "validate"),
+    ("delete", "remove", "erase"),
+    ("start", "launch", "begin"),
+    ("fix", "repair"),
+    ("send", "transmit"),
+    ("get", "retrieve", "fetch"),
+]
+
+IRREGULAR_FORMS = {
+    "begin": ("began", "begun", "beginning"),
+    "send": ("sent",),
+    "get": ("got", "gotten", "getting"),
+    "transmit": ("transmitted", "transmitting"),
+}
+
+
+def _verb_forms(verb):
+    """Base, -s, -ed, and -ing forms of a regular verb, plus known irregulars."""
+    if verb.endswith("e"):
+        forms = {verb, verb + "s", verb + "d", verb[:-1] + "ing"}
+    elif verb.endswith(("ch", "sh", "x")):
+        forms = {verb, verb + "es", verb + "ed", verb + "ing"}
+    else:
+        forms = {verb, verb + "s", verb + "ed", verb + "ing"}
+    forms.update(IRREGULAR_FORMS.get(verb, ()))
+    return forms
+
+
+# word form -> (group index, base verb)
+SYNONYM_FORMS = {
+    form: (index, verb)
+    for index, group in enumerate(SYNONYM_GROUPS)
+    for verb in group
+    for form in _verb_forms(verb)
+}
+
 LATIN = {
     "e.g.": "for example", "i.e.": "that is", "etc.": "and so on (or list them)",
     "et al.": "and others", "vs.": "compared to", "n.b.": "note",
@@ -228,10 +280,18 @@ def check_sentence(sentence, lineno, opts, approved, extra_terms):
             flag("1.5", f"-ing form '{lower[i - 1]} {words[i]}'")
 
     # Rule 1.6 — compound tenses
+    def after_modal(i):
+        """True if a modal comes before position i, with at most one 'not'."""
+        j = i - 1
+        if j >= 0 and lower[j] in NEGATIONS:
+            j -= 1
+        return j >= 0 and lower[j] in MODALS
+
     for i, lw in enumerate(lower[:-1]):
         nxt = lower[i + 1]
         if lw in HAVE_FORMS and (is_participle(nxt) or nxt == "been"):
-            flag("1.6", f"perfect tense '{lw} {nxt}'")
+            if not after_modal(i):
+                flag("1.6", f"perfect tense '{lw} {nxt}'")
         if lw in BE_FORMS and nxt.endswith("ing") and nxt not in ING_ALLOWED:
             flag("1.6", f"continuous tense '{lw} {nxt}'")
 
@@ -250,7 +310,9 @@ def check_sentence(sentence, lineno, opts, approved, extra_terms):
     for w, lw in zip(words, lower):
         if lw in extra_terms:
             continue
-        if lw in NOT_APPROVED:
+        if lw in HEDGES:
+            flag("1.1", f"'{w}' -> use '{NOT_APPROVED[lw]}'; keep the hedge", "warning")
+        elif lw in NOT_APPROVED:
             flag("1.1", f"'{w}' -> use '{NOT_APPROVED[lw]}'")
         elif approved is not None and lw not in approved:
             flag("1.1", f"'{w}' is not in the approved dictionary")
@@ -285,9 +347,45 @@ def check_sentence(sentence, lineno, opts, approved, extra_terms):
     return out
 
 
+def synonym_findings(sentences, extra_terms):
+    """Rule 1.4 — two words from one SYNONYM_GROUP in the same file.
+
+    The word used most often in the file is the one to keep (the first one
+    used wins a tie). Each sentence that uses another word of the group gets
+    a warning: "remove" and "delete" can be two real actions, so only the
+    author can say that they are one.
+    """
+    uses = collections.defaultdict(list)  # group -> [(verb, sentence, line)]
+    for sentence, lineno in sentences:
+        for word in WORD_RE.findall(sentence):
+            lw = word.lower()
+            if lw in SYNONYM_FORMS and lw not in extra_terms:
+                group, verb = SYNONYM_FORMS[lw]
+                uses[group].append((verb, sentence, lineno))
+
+    out = []
+    for group_uses in uses.values():
+        counts = collections.Counter(verb for verb, _, _ in group_uses)
+        if len(counts) < 2:
+            continue
+        first_seen = [verb for verb, _, _ in group_uses]
+        keep = max(counts, key=lambda v: (counts[v], -first_seen.index(v)))
+        flagged = set()
+        for verb, sentence, lineno in group_uses:
+            if verb != keep and (lineno, sentence, verb) not in flagged:
+                flagged.add((lineno, sentence, verb))
+                out.append(Finding(
+                    lineno, "1.4", "warning",
+                    f"'{verb}' and '{keep}' in one file; use '{keep}' "
+                    f"if they are one action", sentence,
+                ))
+    return out
+
+
 def check_text(text, opts, approved, extra_terms):
     text = strip_code(text)
     findings = []
+    prose = []
     para_sentences, para_start = 0, None
     for sentence, lineno in split_sentences(text):
         if is_heading(sentence):
@@ -297,6 +395,9 @@ def check_text(text, opts, approved, extra_terms):
             para_start = lineno
         para_sentences += 1
         findings.extend(check_sentence(sentence, lineno, opts, approved, extra_terms))
+        prose.append((sentence, lineno))
+
+    findings.extend(synonym_findings(prose, extra_terms))
 
     # Rule 6.1 — paragraph length
     for block_start, count in paragraph_sizes(text):
